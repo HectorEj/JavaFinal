@@ -1,7 +1,9 @@
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.InputMismatchException;
 import java.util.Random;
 import java.util.Scanner;
+import java.util.concurrent.ExecutionException;
 
 public class NyRisk {
     class Player {
@@ -80,13 +82,14 @@ public class NyRisk {
 
         public void transferOwner(Player newOwner) {
             this.owner = newOwner;
+            newOwner.addTerritory(this);
         }
 
         public ArrayList<Territory> getTerritoryNeighbor(Player player) {
             ArrayList<Territory> neighborTerritories = new ArrayList<>();
             for (Territory territory : neighbors) {
-                System.out.println("Neighbor territory: " + territory.getName());
-                if (territory.getOwner() == player) {
+                // System.out.println("Neighbor territory: " + territory.getName());
+                if (player == null || territory.getOwner() == player) {
                     neighborTerritories.add(territory);
                 }
             }
@@ -103,17 +106,14 @@ public class NyRisk {
         private ArrayList<Territory> territories;
         private ArrayList<Player> players;
         private Player turn;
-        private ArrayList<Territory> boroughs;
         private Boolean gameOver;
         private Player winner;
 
-        public GameBoard(ArrayList<Territory> territories, ArrayList<Player> players, Player turn,
-                ArrayList<Territory> boroughs, Boolean gameOver,
+        public GameBoard(ArrayList<Territory> territories, ArrayList<Player> players, Player turn, Boolean gameOver,
                 Player winner) {
             this.territories = territories;
             this.players = players;
             this.turn = turn;
-            this.boroughs = boroughs;
             this.gameOver = gameOver;
             this.winner = winner;
 
@@ -124,11 +124,6 @@ public class NyRisk {
             Territory manhattan = new Territory("Manhattan", null, 0, new ArrayList<>());
             Territory brooklyn = new Territory("Brooklyn", null, 0, new ArrayList<>());
             Territory queens = new Territory("Queens", null, 0, new ArrayList<>());
-
-            boroughs.add(bronx);
-            boroughs.add(manhattan);
-            boroughs.add(brooklyn);
-            boroughs.add(queens);
 
             territories.add(bronx);
             territories.add(manhattan);
@@ -143,7 +138,7 @@ public class NyRisk {
                 }
             }
 
-            distributeTerritories(boroughs, players);
+            distributeTerritories(territories, players);
 
             distributeStartArmies(players);
 
@@ -165,12 +160,18 @@ public class NyRisk {
                     for (Territory territory : player.getTerritories()) {
                         System.out.println("- " + territory.getName() + " (Armies: " + territory.getNumArmies() + ")");
                     }
-
                     System.out.print("Enter the name of the territory to place armies on: ");
                     String territoryName = scanner.nextLine();
 
+                    int numArmies = 0;
+
                     System.out.print("Enter the number of armies to place: ");
-                    int numArmies = scanner.nextInt();
+                    while (!scanner.hasNextInt()) {
+                        System.out.println("Enter a valid number, dummy");
+                        System.out.print("Enter the number of armies to place: ");
+                        scanner.next();
+                    }
+                    numArmies = scanner.nextInt();
                     scanner.nextLine();
 
                     Territory selectedTerritory = null;
@@ -196,7 +197,7 @@ public class NyRisk {
                 Territory territory = territories.get(i);
                 Player player = players.get(i % players.size());
                 territory.transferOwner(player);
-                player.addTerritory(territory);
+                // player.addTerritory(territory);
             }
         }
 
@@ -205,6 +206,41 @@ public class NyRisk {
             int armiesPerPlayer = totalArmies / players.size();
             for (Player player : players) {
                 player.setArmies(armiesPerPlayer);
+            }
+        }
+
+        private void distributeArmies(Player player) {
+            int remainingArmies = player.getArmies();
+            Scanner scanner = new Scanner(System.in);
+
+            while (remainingArmies > 0) {
+                System.out.println("Remaining armies: " + remainingArmies);
+                System.out.println("Your territories:");
+                for (Territory territory : player.getTerritories()) {
+                    System.out.println("- " + territory.getName() + " (Armies: " + territory.getNumArmies() + ")");
+                }
+
+                System.out.print("Enter the name of the territory to place armies on: ");
+                String territoryName = scanner.nextLine();
+
+                System.out.print("Enter the number of armies to place: ");
+                int numArmies = scanner.nextInt();
+                scanner.nextLine();
+
+                Territory selectedTerritory = null;
+                for (Territory territory : player.getTerritories()) {
+                    if (territory.getName().equalsIgnoreCase(territoryName)) {
+                        selectedTerritory = territory;
+                        break;
+                    }
+                }
+
+                if (selectedTerritory != null && numArmies <= remainingArmies) {
+                    selectedTerritory.addNumArmies(numArmies);
+                    remainingArmies -= numArmies;
+                } else {
+                    System.out.println("Invalid territory or number of armies. Please try again.");
+                }
             }
         }
 
@@ -218,31 +254,33 @@ public class NyRisk {
             Random rand = new Random();
 
             int attacker_roll = Math.min(numArmies, 3);
-            int[] attackerNumRolls = new int[attacker_roll];
+            int attacker_high_roll = 0;
             for (int i = 0; i < attacker_roll; i++) {
-                attackerNumRolls[i] = rand.nextInt(6) + 1;
+                int new_roll = rand.nextInt(6) + 1;
+                attacker_high_roll = Math.max(attacker_high_roll, new_roll);
+                System.out.println(attacker.getName() + " rolled " + new_roll);
             }
-
-            Arrays.sort(attackerNumRolls);
 
             int defender_roll = Math.min(attackDest.getNumArmies(), 2);
-            int[] defenderNumRolls = new int[defender_roll];
+            int defender_high_roll = 0;
             for (int i = 0; i < defender_roll; i++) {
-                defenderNumRolls[i] = rand.nextInt(6) + 1;
+                int new_roll = rand.nextInt(6) + 1;
+                defender_high_roll = Math.max(defender_high_roll, new_roll);
+                System.out.println(attackDest.getOwner().getName() + " rolled " + new_roll);
             }
 
-            Arrays.sort(defenderNumRolls);
-
-            for (int i = 0; i < Math.min(attacker_roll, defender_roll); i++) {
-                if (attackerNumRolls[attacker_roll - 1 - i] > defenderNumRolls[defender_roll - 1 - i]) {
-                    attackDest.addNumArmies(-1);
-                } else {
-                    attackSource.addNumArmies(-1);
-                }
+            if (attacker_high_roll >= defender_high_roll) {
+                System.out.println(attackDest.getOwner().getName() + " lost 1 army!");
+                attackDest.addNumArmies(-1);
+            } else {
+                System.out.println(attackSource.getOwner().getName() + " lost 1 army!");
+                attackSource.addNumArmies(-1);
             }
 
             if (attackDest.getNumArmies() <= 0) {
                 attackDest.transferOwner(attacker);
+                attackDest.addNumArmies(4);
+                System.out.println(attacker.getName() + " took " + attackDest.getName());
             }
         }
 
@@ -268,7 +306,19 @@ public class NyRisk {
                 return false;
             }
 
-            if (!attackSource.getTerritoryNeighbor(attacker).contains(attackDest)) {
+            if (attackDest.getOwner().equals(attacker)) {
+                System.out.println("Destination Territory is owned by the current player.");
+            }
+
+            boolean isNeighbor = false;
+            for (Territory territory : attackSource.getTerritoryNeighbor(null)) {
+                // System.out.println(territory.getName());
+                if (territory.getName().equalsIgnoreCase(attackDestName)) {
+                    isNeighbor = true;
+                }
+            }
+
+            if (!isNeighbor) {
                 System.out.println("Destination territory is not adjacent to the source territory.");
                 return false;
             }
@@ -278,7 +328,10 @@ public class NyRisk {
                 return false;
             }
 
-            resolveAttack(attacker, attackSource, attackDest, numArmies);
+            while (attackSource.getNumArmies() > 1 && attackDest.getNumArmies() > 0
+                    && attackDest.getOwner() != attackSource.getOwner()) {
+                resolveAttack(attacker, attackSource, attackDest, numArmies);
+            }
 
             return true;
         }
@@ -287,8 +340,8 @@ public class NyRisk {
             if (player.getTerritories().isEmpty()) {
                 return false;
             }
-            for (Territory territory : player.getTerritories()) {
-                if (territory.getOwner().equals(player)) {
+            for (Territory territory : territories) {
+                if (!territory.getOwner().equals(player)) {
                     return false;
                 }
             }
@@ -298,6 +351,7 @@ public class NyRisk {
         private void Reinforcements(Player player) {
             int numOfArmies = player.getTerritories().size() / 3;
             player.setArmies(player.getArmies() + numOfArmies);
+
         }
 
         private void moveArmies(Territory source, Territory destination, int numArmies) {
@@ -313,7 +367,7 @@ public class NyRisk {
                 System.out.println("Source and destination territories are not owned by the player.");
                 return;
             }
-            if (source.getNumArmies() < numArmies) {
+            if (source.getNumArmies() <= numArmies) {
                 System.out.println("Insufficient armies in the source territory.");
                 return;
             }
@@ -361,15 +415,21 @@ public class NyRisk {
         public void playerInfo(Player player) {
             System.out.println("Player: " + player.getName());
             System.out.println("Owned Territories:");
+            ArrayList<Territory> tempTerritories = new ArrayList<Territory>();
             for (Territory territory : player.getTerritories()) {
-                System.out.println("- " + territory.getName());
+                if (!tempTerritories.contains(territory)) {
+                    tempTerritories.add(territory);
+                }
+            }
+            for (Territory territory : tempTerritories) {
+                System.out.println("- " + territory.getName() + " - Armies: " + territory.getNumArmies());
             }
             System.out.println("Territories That Can Be Attacked:");
             for (Territory territory : player.getTerritories()) {
-                ArrayList<Territory> neighbors = territory.getTerritoryNeighbor(player);
+                ArrayList<Territory> neighbors = territory.getTerritoryNeighbor(null);
                 for (Territory neighbor : neighbors) {
                     if (!neighbor.getOwner().equals(player)) {
-                        System.out.println("- " + neighbor.getName());
+                        System.out.println("- " + neighbor.getName() + " - Armies: " + neighbor.getNumArmies());
                     }
                 }
             }
@@ -401,15 +461,19 @@ public class NyRisk {
         players.add(player2);
 
         ArrayList<NyRisk.Territory> territories = new ArrayList<>();
-        ArrayList<NyRisk.Territory> boroughs = new ArrayList<>();
-        NyRisk.GameBoard gameBoard = nyRisk.new GameBoard(territories, players, null, boroughs, false, null);
+        NyRisk.GameBoard gameBoard = nyRisk.new GameBoard(territories, players, null, false, null);
         gameBoard.initializeGame();
+
+        boolean is_first_turn = true;
 
         while (!gameBoard.isGameOver()) {
             for (NyRisk.Player currentPlayer : gameBoard.getPlayers()) {
                 System.out.println(currentPlayer.getName() + "'s turn.");
 
-                gameBoard.Reinforcements(currentPlayer);
+                if (!is_first_turn) {
+                    gameBoard.Reinforcements(currentPlayer);
+                    gameBoard.distributeArmies(currentPlayer);
+                }
 
                 boolean hasAttacked = false;
                 while (!hasAttacked) {
@@ -419,13 +483,17 @@ public class NyRisk {
                     String attackChoice = scan.nextLine().toLowerCase();
 
                     if (attackChoice.equals("yes")) {
+
                         System.out.print("Enter source territory: ");
                         String sourceName = scan.nextLine().toLowerCase();
                         System.out.print("Enter destination territory: ");
                         String destName = scan.nextLine().toLowerCase();
                         System.out.print("Enter number of armies to move: ");
+                        while (!scan.hasNextInt()) {
+                            System.out.print("Enter number of armies to move: ");
+                            scan.next();
+                        }
                         int numArmies = scan.nextInt();
-                        scan.nextLine();
 
                         if (gameBoard.attackTerritory(currentPlayer, sourceName, destName, numArmies)) {
                             hasAttacked = true;
@@ -435,8 +503,8 @@ public class NyRisk {
                     } else {
                         System.out.println("Invalid choice. Please enter 'yes' or 'no'.");
                     }
-                }
 
+                }
                 if (gameBoard.checkForWinner(currentPlayer)) {
                     gameBoard.endGame(currentPlayer);
                     break;
@@ -444,6 +512,7 @@ public class NyRisk {
 
                 gameBoard.nextTurn();
             }
+            is_first_turn = false;
         }
     }
 }
